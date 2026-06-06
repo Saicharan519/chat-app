@@ -58,6 +58,27 @@ export interface RoomMembersResponse {
   members: RoomMember[];
 }
 
+export function useDeleteRoom() {
+  const queryClient = useQueryClient();
+
+  return useMutation<{ roomId: string; roomDeleted: boolean }, Error, string>({
+    mutationFn: async (roomId) => {
+      const response = await client.delete<{ roomId: string; roomDeleted: boolean }>(
+        `/rooms/${roomId}`
+      );
+      return response.data;
+    },
+    onSuccess: (_data, roomId) => {
+      // Drop room from list, clear cached messages
+      queryClient.setQueryData<Room[]>(['rooms'], (old) =>
+        old ? old.filter((r) => r.id !== roomId) : old
+      );
+      queryClient.removeQueries({ queryKey: ['messages', roomId] });
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+    },
+  });
+}
+
 export function useRoomMembers(roomId: string | undefined) {
   return useQuery<RoomMembersResponse, Error>({
     queryKey: ['rooms', 'members', roomId],

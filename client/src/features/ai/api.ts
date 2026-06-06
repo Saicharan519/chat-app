@@ -20,15 +20,16 @@ export interface AssistantMessage {
   content: string;
 }
 
-export function useSmartReplies(roomId: string | undefined, latestMessageId: string | null) {
+export function useSmartReplies(roomId: string | undefined, _latestMessageId: string | null) {
   return useQuery<SmartReplyResponse, Error>({
-    queryKey: ['smart-replies', roomId, latestMessageId],
+    queryKey: ['smart-replies', roomId],
     queryFn: async () => {
       const response = await client.post<SmartReplyResponse>('/ai/smart-reply', { roomId });
       return response.data;
     },
     enabled: !!roomId,
     staleTime: 1000 * 60 * 5, // Cache for 5 mins
+    refetchOnWindowFocus: false,
   });
 }
 

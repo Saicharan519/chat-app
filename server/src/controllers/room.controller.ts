@@ -430,3 +430,67 @@ export async function removeRoomMember(req: AuthenticatedRequest, res: Response)
     return res.status(500).json({ error: 'Internal server error' });
   }
 }
+
+/**
+ * Delete a conversation for the current user.
+ *
+ * For DMs: removes the current user from the room. If no members remain, the room and its messages are hard-deleted.
+ * For groups: same — leaves the room; if empty, room is deleted.
+ *
+ * Returns 404 if the user is not a member (IDOR-safe).
+ */
+export async function deleteRoomForUser(req: AuthenticatedRequest, res: Response) {
+  const userId = req.user?.userId;
+  const { roomId } = req.params;
+
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  if (!roomId) {
+    return res.status(400).json({ error: 'roomId is required' });
+  }
+
+  const dbClient = await getClient();
+  try {
+    await dbClient.query('BEGIN');
+
+    // Verify membership — IDOR guard (return 404 not 403)
+    const memberCheck = await dbClient.query(
+      'SELECT 1 FROM room_members WHERE room_id = $1 AND user_id = $2',
+      [roomId, userId]
+    );
+    if (memberCheck.rowCount === 0) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ error: 'Room not found' });
+    }
+
+    // Remove current user
+    await dbClient.query(
+      'DELETE FROM room_members WHERE room_id = $1 AND user_id = $2',
+      [roomId, userId]
+    );
+
+    // If the room is now empty, hard-delete it (messages cascade via FK ON DELETE CASCADE)
+    const remaining = await dbClient.query(
+      'SELECT COUNT(*)::int AS count FROM room_members WHERE room_id = $1',
+      [roomId]
+    );
+    const memberCount = remaining.rows[0]?.count ?? 0;
+    let roomDeleted = false;
+    if (memberCount === 0) {
+      await dbClient.query('DELETE FROM rooms WHERE id = $1', [roomId]);
+      roomDeleted = true;
+    }
+
+    await dbClient.query('COMMIT');
+
+    logger.info('User left room', { userId, roomId, roomDeleted });
+    return res.status(200).json({ roomId, roomDeleted });
+  } catch (error: any) {
+    await dbClient.query('ROLLBACK');
+    logger.error('Error in deleteRoomForUser controller', { error: error.message });
+    return res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    dbClient.release();
+  }
+}

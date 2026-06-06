@@ -41,9 +41,16 @@ export async function getSmartReplies(req: AuthenticatedRequest, res: Response) 
       return res.status(404).json({ error: 'Room not found' });
     }
 
-    // Fetch last 10 non-deleted text messages with sender usernames
+    // Fetch the current user's username (needed for prompt perspective)
+    const userRes = await pool.query('SELECT username FROM users WHERE id = $1', [userId]);
+    if (userRes.rowCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const currentUsername: string = userRes.rows[0].username;
+
+    // Fetch last 10 non-deleted text messages with sender usernames + sender_ids
     const msgRes = await pool.query(
-      `SELECT u.username AS sender, m.content
+      `SELECT u.username AS sender, m.content, m.sender_id
        FROM messages m
        JOIN users u ON m.sender_id = u.id
        WHERE m.room_id = $1 AND m.type = 'text' AND m.deleted_at IS NULL AND m.content IS NOT NULL
@@ -52,17 +59,21 @@ export async function getSmartReplies(req: AuthenticatedRequest, res: Response) 
       [roomId]
     );
 
+    if (msgRes.rowCount === 0) {
+      return res.status(200).json({ replies: [], cached: false });
+    }
+
+    // The most recent message is at index 0 since the query is DESC
+    const mostRecent = msgRes.rows[0];
+    const currentUserSpokeLast = mostRecent.sender_id === userId;
+
     const messages: ChatMessage[] = msgRes.rows.reverse().map((r) => ({
       sender: r.sender,
       content: r.content,
     }));
 
-    if (messages.length === 0) {
-      return res.status(200).json({ replies: [], cached: false });
-    }
-
-    // Check Redis cache (key = SHA-256 of message content)
-    const cacheKey = `ai:smart-reply:${crypto
+    // Cache key scoped to (room, user) so each participant gets their own perspective
+    const cacheKey = `ai:smart-reply:${userId}:${crypto
       .createHash('sha256')
       .update(JSON.stringify(messages))
       .digest('hex')}`;
@@ -73,7 +84,7 @@ export async function getSmartReplies(req: AuthenticatedRequest, res: Response) 
       return res.status(200).json({ replies: JSON.parse(cached), cached: true });
     }
 
-    const replies = await generateSmartReplies(messages);
+    const replies = await generateSmartReplies(messages, currentUsername, currentUserSpokeLast);
 
     // Cache for 5 minutes
     await redis.set(cacheKey, JSON.stringify(replies), 'EX', 300);
@@ -211,7 +222,29 @@ export async function streamAssistant(req: AuthenticatedRequest, res: Response) 
 
     const parsed = assistantSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ errors: parsed.error.errors });
-    const { history } = parsed.data;
+    const { history, roomId } = parsed.data;
+
+    // If roomId is supplied, verify membership and load recent transcript
+    let roomContext: ChatMessage[] | undefined;
+    if (roomId) {
+      if (!(await assertRoomMembership(roomId, userId))) {
+        return res.status(404).json({ error: 'Room not found' });
+      }
+      const msgRes = await pool.query(
+        `SELECT u.username AS sender, m.content
+         FROM (
+           SELECT sender_id, content, created_at, id
+           FROM messages
+           WHERE room_id = $1 AND deleted_at IS NULL AND content IS NOT NULL AND type = 'text'
+           ORDER BY created_at DESC, id DESC
+           LIMIT 100
+         ) m
+         JOIN users u ON m.sender_id = u.id
+         ORDER BY m.created_at ASC, m.id ASC`,
+        [roomId]
+      );
+      roomContext = msgRes.rows.map((r) => ({ sender: r.sender, content: r.content }));
+    }
 
     // Establish SSE connection
     res.setHeader('Content-Type', 'text/event-stream');
@@ -220,7 +253,7 @@ export async function streamAssistant(req: AuthenticatedRequest, res: Response) 
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    const stream = await getAssistantStream(history);
+    const stream = await getAssistantStream(history, roomContext);
 
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content || '';

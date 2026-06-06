@@ -50,7 +50,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
           <div className="text-center space-y-2">
             <h1 className="font-display text-2xl font-bold tracking-tight text-white bg-gradient-to-r from-white via-[#f4f4f5] to-zinc-400 bg-clip-text text-transparent">
-              Antigravity Chat
+              ContextChat
             </h1>
             <p className="text-zinc-500 text-sm font-medium tracking-wide">
               Securing connection...

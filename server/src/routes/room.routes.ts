@@ -6,6 +6,7 @@ import {
   listRoomMembers,
   addRoomMember,
   removeRoomMember,
+  deleteRoomForUser,
 } from '../controllers/room.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -20,5 +21,6 @@ router.get('/:roomId', getRoomDetails as any);
 router.get('/:roomId/members', listRoomMembers as any);
 router.post('/:roomId/members', addRoomMember as any);
 router.delete('/:roomId/members/:userId', removeRoomMember as any);
+router.delete('/:roomId', deleteRoomForUser as any);
 
 export default router;

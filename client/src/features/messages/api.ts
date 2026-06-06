@@ -38,16 +38,37 @@ export function useMessages(roomId: string | undefined) {
   });
 }
 
+export interface SemanticSearchResult {
+  id: string;
+  room_id: string;
+  sender_id: string;
+  sender_username: string;
+  type: 'text' | 'image' | 'file' | 'system';
+  content: string | null;
+  file_url: string | null;
+  file_name: string | null;
+  created_at: string;
+  similarity: number;
+}
+
+export interface SemanticSearchResponse {
+  query: string;
+  results: SemanticSearchResult[];
+  total: number;
+}
+
 export function useSemanticSearch(roomId: string | undefined, query: string) {
-  return useQuery<Message[], Error>({
+  return useQuery<SemanticSearchResponse, Error>({
     queryKey: ['messages', 'search', roomId, query],
     queryFn: async () => {
-      const response = await client.get<Message[]>(`/messages/room/${roomId}/semantic-search`, {
-        params: { q: query },
-      });
+      const response = await client.get<SemanticSearchResponse>(
+        `/messages/room/${roomId}/semantic-search`,
+        { params: { q: query } }
+      );
       return response.data;
     },
-    enabled: !!roomId && query.trim().length > 0,
+    enabled: !!roomId && query.trim().length >= 2,
+    staleTime: 1000 * 60,
   });
 }
 

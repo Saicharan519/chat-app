@@ -93,6 +93,21 @@ export function initSocket(server: http.Server): Server {
       for (const roomId of roomIds) {
         socket.to(roomId).emit('presence:update', { userId, status: 'online' });
       }
+
+      // Sync current presence of all room members back to the connecting socket
+      if (roomIds.length > 0) {
+        const memberRes = await pool.query(
+          'SELECT DISTINCT user_id FROM room_members WHERE room_id = ANY($1) AND user_id != $2',
+          [roomIds, userId]
+        );
+        const presenceSnapshot: Record<string, 'online' | 'offline'> = {};
+        for (const row of memberRes.rows) {
+          const memberId: string = row.user_id;
+          const status = await redis.get(`presence:${memberId}`);
+          presenceSnapshot[memberId] = status === 'online' ? 'online' : 'offline';
+        }
+        socket.emit('presence:sync', presenceSnapshot);
+      }
     } catch (redisError: any) {
       logger.error('Failed to update presence to online in Redis', {
         userId,

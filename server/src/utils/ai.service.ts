@@ -17,16 +17,27 @@ export interface ChatMessage {
 }
 
 /**
- * Generate 3 smart reply suggestions based on the last N messages.
+ * Generate 3 smart reply suggestions written from the current user's perspective.
  */
-export async function generateSmartReplies(messages: ChatMessage[]): Promise<string[]> {
+export async function generateSmartReplies(
+  messages: ChatMessage[],
+  currentUsername: string,
+  currentUserSpokeLast: boolean
+): Promise<string[]> {
   const transcript = messages.map((m) => `${m.sender}: ${m.content}`).join('\n');
+
+  const directive = currentUserSpokeLast
+    ? `"${currentUsername}" sent the most recent message. Suggest 3 natural FOLLOW-UP messages they could send next to continue the conversation — do not echo or restate what they already said.`
+    : `Someone other than "${currentUsername}" sent the most recent message. Suggest 3 different ways "${currentUsername}" could REPLY to that message.`;
 
   const completion = await groq.chat.completions.create({
     model: MODEL,
     messages: [
-      { role: 'system', content: SMART_REPLY_SYSTEM_PROMPT },
-      { role: 'user', content: `Conversation:\n${transcript}\n\nGenerate 3 smart reply suggestions.` },
+      { role: 'system', content: SMART_REPLY_SYSTEM_PROMPT(currentUsername) },
+      {
+        role: 'user',
+        content: `Conversation so far:\n${transcript}\n\n${directive}`,
+      },
     ],
     response_format: { type: 'json_object' },
     temperature: 0.7,
@@ -56,7 +67,7 @@ export async function refineTone(text: string, tone: string): Promise<string> {
     model: MODEL,
     messages: [
       { role: 'system', content: TONE_SYSTEM_PROMPT(tone) },
-      { role: 'user', content: text },
+      { role: 'user', content: `<text>${text}</text>` },
     ],
     temperature: 0.6,
     max_tokens: 1000,
@@ -72,7 +83,7 @@ export async function refineCustom(text: string, instruction: string): Promise<s
     model: MODEL,
     messages: [
       { role: 'system', content: EDITOR_SYSTEM_PROMPT },
-      { role: 'user', content: `Instruction: ${instruction}\n\nText:\n${text}` },
+      { role: 'user', content: `Instruction: ${instruction}\n\n<text>${text}</text>` },
     ],
     temperature: 0.6,
     max_tokens: 1000,
@@ -100,21 +111,36 @@ export async function getChatSummaryStream(messages: ChatMessage[]) {
 
 /**
  * Returns a streaming Groq completion for the AI Assistant.
+ * When roomContext is provided, the assistant grounds its answers in that transcript.
  */
 export async function getAssistantStream(
-  history: { role: 'user' | 'assistant' | 'system'; content: string }[]
+  history: { role: 'user' | 'assistant' | 'system'; content: string }[],
+  roomContext?: ChatMessage[]
 ) {
+  let systemContent =
+    'You are a helpful, friendly, and knowledgeable AI assistant in a team chat application. Keep your answers clear, concise, and helpful.';
+
+  if (roomContext && roomContext.length > 0) {
+    const transcript = roomContext.map((m) => `${m.sender}: ${m.content}`).join('\n');
+    systemContent = `You are ContextChat's AI Co-pilot, embedded in a team chat. The user is asking questions about an ongoing conversation. Use ONLY the transcript below to answer questions about what was said, decided, or discussed. When citing what someone said, mention the sender by name.
+
+If the answer is not present in the transcript, say so plainly — do NOT invent facts.
+
+For general questions unrelated to the transcript, answer normally using your own knowledge.
+
+--- ROOM TRANSCRIPT (most recent messages) ---
+${transcript}
+--- END TRANSCRIPT ---`;
+  }
+
   return groq.chat.completions.create({
     model: MODEL,
     messages: [
-      {
-        role: 'system',
-        content: 'You are a helpful, friendly, and knowledgeable AI assistant in a team chat application. Keep your answers clear, concise, and helpful.',
-      },
+      { role: 'system', content: systemContent },
       ...history,
     ],
     stream: true,
-    temperature: 0.7,
+    temperature: 0.6,
     max_tokens: 1000,
   });
 }

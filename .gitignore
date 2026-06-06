@@ -5,6 +5,10 @@
 **/.env
 **/.env.local
 
+# Keep environment examples
+!.env.example
+!**/.env.example
+
 # Dependencies
 node_modules/
 **/node_modules/
@@ -13,6 +17,8 @@ node_modules/
 dist/
 **/dist/
 dist-ssr/
+build/
+**/build/
 
 # Logs
 *.log
@@ -31,3 +37,28 @@ Thumbs.db
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Test / coverage output
+coverage/
+**/coverage/
+
+# Cache folders
+.cache/
+.vite/
+.eslintcache
+
+# Runtime temp files
+tmp/
+temp/
+uploads/
+
+# Local database files
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+
+# Local AI/tooling folders
+.claude/
+.codex/
+.agents/

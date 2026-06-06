@@ -36,6 +36,10 @@ export function useSocket() {
       socket.emit('presence:heartbeat');
     });
 
+    socket.on('presence:sync', (snapshot: Record<string, 'online' | 'offline'>) => {
+      Object.entries(snapshot).forEach(([uid, status]) => setPresence(uid, status));
+    });
+
     socket.on('presence:update', ({ userId, status }: { userId: string; status: 'online' | 'offline' }) => {
       setPresence(userId, status);
     });

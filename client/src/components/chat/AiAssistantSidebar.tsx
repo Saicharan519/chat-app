@@ -1,21 +1,23 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sparkles, Send, Bot, Trash2 } from 'lucide-react';
+import { X, Sparkles, Send, Bot, Trash2, BookOpen } from 'lucide-react';
 import { useChatStore } from '@/stores/chatStore';
 import { streamSse } from '@/features/ai/api';
 import type { AssistantMessage } from '@/features/ai/api';
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
 
+const INTRO_MESSAGE: AssistantMessage = {
+  role: 'assistant',
+  content:
+    "Hi! I'm your AI Co-pilot. Toggle **Room context** above to let me read this conversation — then ask me things like *\"what did Alex say about the deadline?\"* or *\"summarize the last 20 messages\"*. With it off, I work like a normal chat assistant.",
+};
+
 export const AiAssistantSidebar: React.FC = () => {
-  const { isAiAssistantOpen, setAiAssistantOpen } = useChatStore();
-  const [messages, setMessages] = useState<AssistantMessage[]>([
-    {
-      role: 'assistant',
-      content: "Hello! I am your AI Co-pilot. I can help refine your messages, summarize discussions, draft responses, or answer any general questions. What's on your mind?",
-    },
-  ]);
+  const { isAiAssistantOpen, setAiAssistantOpen, activeRoomId } = useChatStore();
+  const [messages, setMessages] = useState<AssistantMessage[]>([INTRO_MESSAGE]);
   const [inputText, setInputText] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [useRoomContext, setUseRoomContext] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -62,13 +64,13 @@ export const AiAssistantSidebar: React.FC = () => {
 
     let streamedContent = '';
 
+    const shouldUseRoom = useRoomContext && !!activeRoomId;
+
     streamSse(
       '/ai/assistant',
       {
-        history: [
-          { role: 'system', content: 'You are a helpful, witty, and intelligent AI Assistant integrated inside a real-time collaborative chat room. Keep your replies concise and formatted beautifully with Markdown where appropriate.' },
-          ...newHistory,
-        ],
+        history: newHistory,
+        ...(shouldUseRoom ? { roomId: activeRoomId } : {}),
       },
       (chunk) => {
         streamedContent += chunk;
@@ -115,12 +117,7 @@ export const AiAssistantSidebar: React.FC = () => {
         abortControllerRef.current.abort();
       }
       setIsStreaming(false);
-      setMessages([
-        {
-          role: 'assistant',
-          content: "Hello! I am your AI Co-pilot. I can help refine your messages, summarize discussions, draft responses, or answer any general questions. What's on your mind?",
-        },
-      ]);
+      setMessages([INTRO_MESSAGE]);
     }
   };
 
@@ -167,6 +164,42 @@ export const AiAssistantSidebar: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* Room Context Toggle */}
+      <div className="px-5 py-2.5 border-b border-white/5 bg-white/2 flex items-center justify-between shrink-0 relative">
+        <div className="flex items-center gap-2 min-w-0">
+          <BookOpen className={`w-3.5 h-3.5 shrink-0 ${useRoomContext && activeRoomId ? 'text-accent-violet' : 'text-zinc-500'}`} />
+          <div className="flex flex-col min-w-0">
+            <span className="text-[11px] font-semibold text-zinc-200">Room context</span>
+            <span className="text-[10px] text-zinc-500 truncate">
+              {!activeRoomId
+                ? 'Open a chat to enable'
+                : useRoomContext
+                  ? 'AI can read this conversation'
+                  : 'AI answers without chat history'}
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={() => setUseRoomContext((v) => !v)}
+          disabled={!activeRoomId}
+          className={`relative w-10 h-5.5 rounded-full transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ring-1 ring-inset ring-white/10 ${
+            useRoomContext && activeRoomId ? 'bg-accent-violet' : 'bg-zinc-700'
+          }`}
+          style={{ width: 36, height: 20 }}
+          title={useRoomContext ? 'Turn off room context' : 'Turn on room context'}
+          aria-pressed={useRoomContext && !!activeRoomId}
+        >
+          <span
+            className="absolute top-1/2 -translate-y-1/2 rounded-full bg-white shadow-sm transition-all duration-200 ease-out"
+            style={{
+              width: 14,
+              height: 14,
+              left: useRoomContext && activeRoomId ? 19 : 3,
+            }}
+          />
+        </button>
+      </div>
 
       {/* Message Feed */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 scrollbar-none relative">

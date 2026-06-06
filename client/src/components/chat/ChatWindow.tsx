@@ -9,7 +9,8 @@ import { TypingIndicator } from '@/components/chat/TypingIndicator';
 import { MessageInput } from '@/components/chat/MessageInput';
 import { AiAssistantSidebar } from '@/components/chat/AiAssistantSidebar';
 import { SummarizerModal } from '@/components/chat/SummarizerModal';
-import { Users, ArrowLeft, Sparkles, BookOpen } from 'lucide-react';
+import { SemanticSearchModal } from '@/components/chat/SemanticSearchModal';
+import { Users, ArrowLeft, Sparkles, BookOpen, Search } from 'lucide-react';
 
 interface ChatWindowProps {
   roomId: string;
@@ -17,6 +18,7 @@ interface ChatWindowProps {
 
 export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
 
   const { user } = useAuthStore();
   const { typing, presence, setActiveRoomId, setAiAssistantOpen, setSummarizerOpen } = useChatStore();
@@ -92,6 +94,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         {/* Right-side AI action buttons */}
         <div className="flex items-center gap-1 shrink-0">
           <button
+            onClick={() => setIsSearchOpen(true)}
+            className="p-2 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
+            title="Semantic search"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+          <button
             onClick={() => setSummarizerOpen(true)}
             className="p-2 rounded-lg hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
             title="Summarize conversation"
@@ -134,6 +143,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       {/* AI Panels */}
       <AiAssistantSidebar />
       <SummarizerModal roomId={roomId} />
+      <SemanticSearchModal
+        roomId={roomId}
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+      />
     </div>
   );
 };

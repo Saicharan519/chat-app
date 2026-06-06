@@ -103,7 +103,7 @@ export const Register: React.FC = () => {
             Create account
           </h1>
           <p className="text-zinc-400 text-sm">
-            Join Antigravity Chat and get connected
+            Join ContextChat and get connected
           </p>
         </div>
 

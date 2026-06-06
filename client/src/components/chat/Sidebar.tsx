@@ -23,7 +23,7 @@ export const Sidebar: React.FC = () => {
             <MessageSquare className="w-4.5 h-4.5" />
           </div>
           <span className="font-display font-bold text-white text-base">
-            Antigravity Chat
+            ContextChat
           </span>
         </div>
 

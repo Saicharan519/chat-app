@@ -27,4 +27,5 @@ export const assistantSchema = z.object({
       content: z.string().min(1, 'content is required'),
     })
   ).min(1, 'history must contain at least one message'),
+  roomId: z.string().uuid().optional(),
 });
