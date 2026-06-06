@@ -27,6 +27,18 @@ const envSchema = z.object({
   // AI Keys
   GROQ_API_KEY: z.string().min(1, { message: 'GROQ_API_KEY is required' }),
   GEMINI_API_KEY: z.string().min(1, { message: 'GEMINI_API_KEY is required' }),
+
+  // CORS — comma-separated list of allowed origins for the frontend.
+  // Required in production; optional in development (defaults to permissive).
+  CORS_ORIGIN: z.string().optional(),
+}).superRefine((data, ctx) => {
+  if (data.NODE_ENV === 'production' && !data.CORS_ORIGIN) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['CORS_ORIGIN'],
+      message: 'CORS_ORIGIN must be set in production (comma-separated list of allowed frontend origins)',
+    });
+  }
 });
 
 const parseEnv = () => {

@@ -64,8 +64,14 @@ export async function streamSse(
   signal?: AbortSignal
 ) {
   const token = tokenStore.getToken();
-  // Read target API base URL from Vite env or fallback
-  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1').replace(/\/$/, '');
+  // VITE_API_BASE_URL is required — fail loudly if missing rather than silently
+  // pointing at a wrong host (this used to default to :5000 while the server
+  // listens on :4000, masking misconfigurations).
+  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+  if (!apiBaseUrl) {
+    onError(new Error('VITE_API_BASE_URL is not configured. Set it in client/.env.'));
+    return;
+  }
   
   try {
     const response = await fetch(`${apiBaseUrl}${url}`, {

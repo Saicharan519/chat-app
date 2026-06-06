@@ -1,6 +1,11 @@
 import { useInfiniteQuery, useQuery, useMutation } from '@tanstack/react-query';
 import { client } from '@/lib/client';
 
+export interface MessageReaction {
+  emoji: string;
+  users: string[];
+}
+
 export interface Message {
   id: string;
   room_id: string;
@@ -13,6 +18,7 @@ export interface Message {
   edited_at: string | null;
   deleted_at: string | null;
   created_at: string;
+  reactions?: MessageReaction[];
 }
 
 export interface MessagesResponse {
@@ -94,6 +100,22 @@ export function useDeleteMessage() {
   return useMutation<void, Error, { messageId: string }>({
     mutationFn: async ({ messageId }) => {
       await client.delete(`/messages/${messageId}`);
+    },
+  });
+}
+
+export function useToggleReaction() {
+  return useMutation<
+    { messageId: string; reactions: MessageReaction[] },
+    Error,
+    { messageId: string; emoji: string }
+  >({
+    mutationFn: async ({ messageId, emoji }) => {
+      const response = await client.post<{ messageId: string; reactions: MessageReaction[] }>(
+        `/messages/${messageId}/react`,
+        { emoji }
+      );
+      return response.data;
     },
   });
 }

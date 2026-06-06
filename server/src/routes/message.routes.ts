@@ -5,6 +5,7 @@ import {
   editMessage,
   deleteMessage,
   semanticSearch,
+  toggleMessageReaction,
 } from '../controllers/message.controller';
 import { authMiddleware } from '../middlewares/auth.middleware';
 
@@ -18,6 +19,7 @@ router.get('/room/:roomId/semantic-search', semanticSearch as any);
 router.post('/room/:roomId', createMessage as any);
 router.patch('/:messageId', editMessage as any);
 router.delete('/:messageId', deleteMessage as any);
+router.post('/:messageId/react', toggleMessageReaction as any);
 
 export default router;
 

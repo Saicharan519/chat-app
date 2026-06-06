@@ -70,7 +70,7 @@ export async function deleteUploadedFile(req: AuthenticatedRequest, res: Respons
       `UPDATE messages
        SET content = NULL, file_url = NULL, file_name = NULL, file_size = NULL, public_id = NULL, deleted_at = NOW()
        WHERE id = $1
-       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, public_id, edited_at, deleted_at, created_at`,
+       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, public_id, edited_at, deleted_at, created_at, '[]'::json AS reactions`,
       [message.id]
     );
 
@@ -231,7 +231,7 @@ export async function uploadAndRegisterFile(req: AuthenticatedRequest, res: Resp
       const insertRes = await pool.query(
         `INSERT INTO messages (room_id, sender_id, type, file_url, file_name, file_size, public_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, public_id, edited_at, deleted_at, created_at`,
+         RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, public_id, edited_at, deleted_at, created_at, '[]'::json AS reactions`,
         [roomId, userId, type, file_url, file_name, file_size, file_id]
       );
 
@@ -295,7 +295,7 @@ export async function uploadAndRegisterFile(req: AuthenticatedRequest, res: Resp
       const insertRes = await pool.query(
         `INSERT INTO messages (room_id, sender_id, type, file_url, file_name, file_size, public_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, public_id, edited_at, deleted_at, created_at`,
+         RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, public_id, edited_at, deleted_at, created_at, '[]'::json AS reactions`,
         [roomId, userId, type, uploadResult.url, file.originalname, file.size, uploadResult.fileId]
       );
 

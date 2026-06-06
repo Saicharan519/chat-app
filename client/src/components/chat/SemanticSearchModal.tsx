@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, Sparkles, Loader2, FileText, Image as ImageIcon } from 'lucide-react';
 import { useSemanticSearch } from '@/features/messages/api';
 import type { SemanticSearchResult } from '@/features/messages/api';
@@ -66,13 +67,13 @@ export const SemanticSearchModal: React.FC<SemanticSearchModalProps> = ({
     !isFetching && debouncedQuery.trim().length >= 2 && results.length === 0;
   const showPrompt = debouncedQuery.trim().length < 2;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-black/60 backdrop-blur-sm animate-fade-in"
+      className="fixed inset-0 z-[100] flex items-start justify-center pt-20 px-4 bg-black/60 backdrop-blur-sm animate-fade-in"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl glass-panel border border-white/10 rounded-2xl shadow-2xl bg-zinc-900/95 overflow-hidden"
+        className="w-full max-w-2xl border border-white/10 rounded-2xl shadow-2xl bg-zinc-950 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header / search input */}
@@ -153,7 +154,8 @@ export const SemanticSearchModal: React.FC<SemanticSearchModalProps> = ({
           <span className="font-mono">esc to close</span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

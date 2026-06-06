@@ -38,9 +38,23 @@ export async function getRoomMessages(req: AuthenticatedRequest, res: Response) 
     const { limit, cursor } = parseResult.data;
 
     let queryStr = `
-      SELECT id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at
-      FROM messages
-      WHERE room_id = $1
+      SELECT
+        m.id, m.room_id, m.sender_id, m.type, m.content, m.file_url, m.file_name, m.file_size,
+        m.edited_at, m.deleted_at, m.created_at,
+        COALESCE(
+          (
+            SELECT json_agg(json_build_object('emoji', emoji, 'users', users) ORDER BY emoji)
+            FROM (
+              SELECT emoji, json_agg(user_id ORDER BY created_at) AS users
+              FROM message_reactions
+              WHERE message_id = m.id
+              GROUP BY emoji
+            ) sub
+          ),
+          '[]'::json
+        ) AS reactions
+      FROM messages m
+      WHERE m.room_id = $1
     `;
     const params: any[] = [roomId];
 
@@ -51,7 +65,7 @@ export async function getRoomMessages(req: AuthenticatedRequest, res: Response) 
         if (!created_at || !id) {
           return res.status(400).json({ error: 'Invalid cursor format' });
         }
-        queryStr += ` AND (created_at < $2 OR (created_at = $2 AND id < $3))`;
+        queryStr += ` AND (m.created_at < $2 OR (m.created_at = $2 AND m.id < $3))`;
         params.push(created_at, id);
       } catch (err) {
         return res.status(400).json({ error: 'Invalid cursor encoding' });
@@ -60,7 +74,7 @@ export async function getRoomMessages(req: AuthenticatedRequest, res: Response) 
 
     // Add ordering and limit
     const limitIndex = params.length + 1;
-    queryStr += ` ORDER BY created_at DESC, id DESC LIMIT $${limitIndex}`;
+    queryStr += ` ORDER BY m.created_at DESC, m.id DESC LIMIT $${limitIndex}`;
     params.push(limit);
 
     const messagesRes = await pool.query(queryStr, params);
@@ -81,6 +95,7 @@ export async function getRoomMessages(req: AuthenticatedRequest, res: Response) 
           edited_at: msg.edited_at,
           deleted_at: msg.deleted_at,
           created_at: msg.created_at,
+          reactions: [],
         };
       }
       return msg;
@@ -140,7 +155,7 @@ export async function createMessage(req: AuthenticatedRequest, res: Response) {
     const insertRes = await pool.query(
       `INSERT INTO messages (room_id, sender_id, type, content)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at`,
+       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at, '[]'::json AS reactions`,
       [roomId, userId, 'text', content]
     );
 
@@ -227,7 +242,7 @@ export async function editMessage(req: AuthenticatedRequest, res: Response) {
       `UPDATE messages
        SET content = $1, edited_at = NOW()
        WHERE id = $2
-       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at`,
+       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at, '[]'::json AS reactions`,
       [content, messageId]
     );
 
@@ -285,7 +300,7 @@ export async function deleteMessage(req: AuthenticatedRequest, res: Response) {
       `UPDATE messages
        SET content = NULL, file_url = NULL, file_name = NULL, file_size = NULL, deleted_at = NOW()
        WHERE id = $1
-       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at`,
+       RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at, '[]'::json AS reactions`,
       [messageId]
     );
 
@@ -380,3 +395,89 @@ export async function semanticSearch(req: AuthenticatedRequest, res: Response) {
   }
 }
 
+
+/**
+ * Toggle a reaction on a message (IDOR protected).
+ * If the (message, user, emoji) row exists, it's deleted. Otherwise, inserted.
+ * Always returns the complete updated reactions list for the message.
+ */
+export async function toggleMessageReaction(req: AuthenticatedRequest, res: Response) {
+  try {
+    const userId = req.user?.userId;
+    const { messageId } = req.params;
+    const emoji = (req.body?.emoji ?? '').toString().trim();
+
+    if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!messageId) return res.status(400).json({ error: 'messageId is required' });
+    if (!emoji || emoji.length > 10) {
+      return res.status(400).json({ error: 'emoji is required (max 10 chars)' });
+    }
+
+    // Fetch the message and verify room membership in one query (IDOR)
+    const msgRes = await pool.query(
+      `SELECT m.id, m.room_id, m.deleted_at
+       FROM messages m
+       JOIN room_members rm ON rm.room_id = m.room_id AND rm.user_id = $1
+       WHERE m.id = $2`,
+      [userId, messageId]
+    );
+    if (msgRes.rowCount === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    const message = msgRes.rows[0];
+    if (message.deleted_at !== null) {
+      return res.status(400).json({ error: 'Cannot react to a deleted message' });
+    }
+
+    // Toggle the reaction
+    const existsRes = await pool.query(
+      'SELECT 1 FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+      [messageId, userId, emoji]
+    );
+
+    if ((existsRes.rowCount ?? 0) > 0) {
+      await pool.query(
+        'DELETE FROM message_reactions WHERE message_id = $1 AND user_id = $2 AND emoji = $3',
+        [messageId, userId, emoji]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO message_reactions (message_id, user_id, emoji)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING`,
+        [messageId, userId, emoji]
+      );
+    }
+
+    // Re-aggregate reactions for the message
+    const reactionsRes = await pool.query(
+      `SELECT COALESCE(
+        json_agg(json_build_object('emoji', emoji, 'users', users) ORDER BY emoji),
+        '[]'::json
+      ) AS reactions
+      FROM (
+        SELECT emoji, json_agg(user_id ORDER BY created_at) AS users
+        FROM message_reactions
+        WHERE message_id = $1
+        GROUP BY emoji
+      ) sub`,
+      [messageId]
+    );
+
+    const reactions = reactionsRes.rows[0]?.reactions ?? [];
+
+    // Broadcast updated reactions to the room
+    if (io) {
+      io.to(message.room_id).emit('message:reactions', {
+        messageId,
+        roomId: message.room_id,
+        reactions,
+      });
+    }
+
+    return res.status(200).json({ messageId, reactions });
+  } catch (error: any) {
+    logger.error('Error in toggleMessageReaction controller', { error: error.message });
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}

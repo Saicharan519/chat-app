@@ -3,6 +3,30 @@ import { AuthenticatedRequest } from '../middlewares/auth.middleware';
 import pool, { getClient } from '../config/db';
 import { createRoomSchema, addMemberSchema, queryRoomMembersSchema } from '../schemas/room.schema';
 import { logger } from '../utils/logger';
+import { io } from '../socket';
+
+/**
+ * Make every connected socket for each given user join the new room and notify
+ * the client so it can refresh its rooms list. Without this, sockets that
+ * connected BEFORE the room was created never join it, and real-time messages
+ * skip them until they refresh the page.
+ */
+async function attachUsersToNewRoom(memberIds: string[], room: any) {
+  if (!io) return;
+  for (const memberId of memberIds) {
+    try {
+      // socketsJoin makes all sockets currently in `user:{id}` also join roomId.
+      await io.in(`user:${memberId}`).socketsJoin(room.id);
+      io.to(`user:${memberId}`).emit('room:created', room);
+    } catch (err: any) {
+      logger.warn('Failed to attach user to new room', {
+        userId: memberId,
+        roomId: room.id,
+        error: err.message,
+      });
+    }
+  }
+}
 
 /**
  * Create a new chat room (Direct Message or Group Room)
@@ -83,6 +107,7 @@ export async function createRoom(req: AuthenticatedRequest, res: Response) {
 
         await client.query('COMMIT');
         logger.info('Created new direct room', { roomId: newRoom.id, creatorId, targetUserId });
+        await attachUsersToNewRoom([creatorId, targetUserId], newRoom);
         return res.status(201).json(newRoom);
       } catch (err: any) {
         await client.query('ROLLBACK');
@@ -131,6 +156,7 @@ export async function createRoom(req: AuthenticatedRequest, res: Response) {
 
         await client.query('COMMIT');
         logger.info('Created new group room', { roomId: newRoom.id, creatorId, name });
+        await attachUsersToNewRoom([creatorId, ...uniqueMemberIds], newRoom);
         return res.status(201).json(newRoom);
       } catch (err: any) {
         await client.query('ROLLBACK');

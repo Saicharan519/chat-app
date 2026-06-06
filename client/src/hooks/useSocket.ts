@@ -4,7 +4,7 @@ import { getSocket, initSocket, disconnectSocket } from '@/lib/socket';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chatStore';
 import { tokenStore } from '@/lib/tokenStore';
-import type { Message, MessagesResponse } from '@/features/messages/api';
+import type { Message, MessageReaction, MessagesResponse } from '@/features/messages/api';
 import type { InfiniteData } from '@tanstack/react-query';
 
 export function useSocket() {
@@ -86,6 +86,11 @@ export function useSocket() {
       queryClient.invalidateQueries({ queryKey: ['rooms'] });
     });
 
+    socket.on('room:created', () => {
+      // Server pushed a new room we belong to — refresh the rooms list.
+      queryClient.invalidateQueries({ queryKey: ['rooms'] });
+    });
+
     socket.on('room:replay', ({ messages, has_gap, roomId }: { messages: Message[]; has_gap: boolean; roomId: string }) => {
       console.log(`Received ${messages.length} replayed messages for room ${roomId}`);
 
@@ -126,6 +131,24 @@ export function useSocket() {
     socket.on('message:read', ({ roomId }: { roomId: string; messageId: string; userId: string }) => {
       // Invalidate messages query or update cache as needed
       queryClient.invalidateQueries({ queryKey: ['messages', roomId] });
+    });
+
+    socket.on('message:reactions', ({ messageId, roomId, reactions }: { messageId: string; roomId: string; reactions: MessageReaction[] }) => {
+      queryClient.setQueryData<InfiniteData<MessagesResponse>>(
+        ['messages', roomId],
+        (oldData) => {
+          if (!oldData) return oldData;
+          return {
+            ...oldData,
+            pages: oldData.pages.map((page) => ({
+              ...page,
+              messages: page.messages.map((m) =>
+                m.id === messageId ? { ...m, reactions } : m
+              ),
+            })),
+          };
+        }
+      );
     });
 
     socket.on('message:update', (updatedMessage: Message) => {

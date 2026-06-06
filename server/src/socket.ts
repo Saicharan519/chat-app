@@ -5,13 +5,14 @@ import redis from './config/redis';
 import pool from './config/db';
 import { logger } from './utils/logger';
 import { addEmbeddingJob } from './queues/embedding.queue';
+import { allowedOrigins } from './app';
 
 export let io: Server;
 
 export function initSocket(server: http.Server): Server {
   io = new Server(server, {
     cors: {
-      origin: '*', // Allow all in dev/testing
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     },
@@ -66,6 +67,10 @@ export function initSocket(server: http.Server): Server {
     const userId = user.userId;
     logger.info(`Socket connected: ${socket.id} (User: ${userId}, ${user.username})`);
 
+    // Join a personal room so other parts of the server can address this user
+    // directly (e.g. when a new room is created, push the room to all member sockets).
+    socket.join(`user:${userId}`);
+
     // Fetch user's room memberships and join them
     let roomIds: string[] = [];
     try {
@@ -74,7 +79,7 @@ export function initSocket(server: http.Server): Server {
         [userId]
       );
       roomIds = roomsResult.rows.map((row) => row.room_id);
-      
+
       // Join socket rooms
       for (const roomId of roomIds) {
         socket.join(roomId);
@@ -231,7 +236,7 @@ export function initSocket(server: http.Server): Server {
         const insertRes = await pool.query(
           `INSERT INTO messages (room_id, sender_id, type, content, file_url, file_name, file_size)
            VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at`,
+           RETURNING id, room_id, sender_id, type, content, file_url, file_name, file_size, edited_at, deleted_at, created_at, '[]'::json AS reactions`,
           [roomId, userId, msgType, content || null, file_url || null, file_name || null, file_size || null]
         );
 

@@ -72,14 +72,20 @@ export function generateRefreshToken(): { token: string; hash: string } {
 }
 
 /**
- * Standard cookie options for HttpOnly Refresh Token
+ * Standard cookie options for HttpOnly Refresh Token.
+ *
+ * In production the frontend and backend typically live on different origins
+ * (e.g. Vercel + Render), so we use SameSite=None + Secure so the browser
+ * actually sends the cookie on cross-site /auth/refresh requests. In dev we
+ * keep SameSite=Lax which works for localhost on different ports.
  */
 export const getCookieOptions = () => {
+  const isProd = env.NODE_ENV === 'production';
   return {
     httpOnly: true,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'strict' as const,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
+    secure: isProd,
+    sameSite: (isProd ? 'none' : 'lax') as 'none' | 'lax',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     path: '/',
   };
 };

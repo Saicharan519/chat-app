@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import DOMPurify from 'dompurify';
-import { MoreVertical, Edit2, Trash2, Paperclip, Download } from 'lucide-react';
-import { useDeleteMessage } from '@/features/messages/api';
+import { MoreVertical, Edit2, Trash2, Paperclip, Download, SmilePlus } from 'lucide-react';
+import { useDeleteMessage, useToggleReaction } from '@/features/messages/api';
 import type { Message } from '@/features/messages/api';
+import { useAuthStore } from '@/stores/authStore';
 import { Avatar } from '@/components/ui/Avatar';
 
 interface MessageBubbleProps {
@@ -13,6 +14,8 @@ interface MessageBubbleProps {
   onEdit?: (message: Message) => void;
 }
 
+const REACTION_PALETTE = ['👍', '❤️', '😂', '🎉', '🔥', '😮'];
+
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
   isMine,
@@ -21,23 +24,30 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   onEdit,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
   const deleteMessageMutation = useDeleteMessage();
+  const toggleReaction = useToggleReaction();
+  const currentUserId = useAuthStore((s) => s.user?.id);
 
-  // Close context menu on click outside
+  // Close popovers on click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setShowMenu(false);
       }
+      if (pickerRef.current && !pickerRef.current.contains(event.target as Node)) {
+        setShowPicker(false);
+      }
     };
-    if (showMenu) {
+    if (showMenu || showPicker) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showMenu]);
+  }, [showMenu, showPicker]);
 
   // System Message
   if (message.type === 'system') {
@@ -88,7 +98,13 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
     setShowMenu(false);
   };
 
+  const handleToggleEmoji = (emoji: string) => {
+    toggleReaction.mutate({ messageId: message.id, emoji });
+    setShowPicker(false);
+  };
+
   const safeContent = DOMPurify.sanitize(message.content ?? '');
+  const reactions = message.reactions ?? [];
 
   return (
     <div
@@ -168,6 +184,30 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
           )}
         </div>
 
+        {/* Reaction pills */}
+        {reactions.length > 0 && (
+          <div className={`flex flex-wrap gap-1 mt-1 ${isMine ? 'justify-end' : 'justify-start'}`}>
+            {reactions.map((r) => {
+              const byMe = currentUserId ? r.users.includes(currentUserId) : false;
+              return (
+                <button
+                  key={r.emoji}
+                  onClick={() => handleToggleEmoji(r.emoji)}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-colors cursor-pointer select-none ${
+                    byMe
+                      ? 'bg-accent-violet/20 border-accent-violet/40 text-white'
+                      : 'bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10'
+                  }`}
+                  title={byMe ? 'Click to remove your reaction' : 'Click to add your reaction'}
+                >
+                  <span className="text-sm leading-none">{r.emoji}</span>
+                  <span className="text-[10px] font-semibold">{r.users.length}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {/* Info row: edited and time */}
         <div className="flex items-center gap-1.5 mt-1 select-none px-1">
           {message.edited_at && (
@@ -179,42 +219,81 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         </div>
       </div>
 
-      {/* Message Actions (Edit/Delete menu) - Only if mine and hover/right-click */}
-      {isMine && (
-        <div className="message-actions self-center relative flex items-center justify-center">
+      {/* Hover action bar (reaction + menu) */}
+      <div className="message-actions self-center relative flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        {/* Reaction button — available to everyone */}
+        <div ref={pickerRef} className="relative">
           <button
-            onClick={() => setShowMenu(!showMenu)}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-zinc-300 transition-colors"
-            title="Message options"
+            onClick={() => setShowPicker((v) => !v)}
+            className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+            title="Add reaction"
           >
-            <MoreVertical className="w-4 h-4" />
+            <SmilePlus className="w-4 h-4" />
           </button>
-
-          {showMenu && (
+          {showPicker && (
             <div
-              ref={menuRef}
-              className="absolute bottom-8 right-0 w-32 rounded-xl border border-white/5 bg-[#131316] p-1 shadow-xl z-30"
+              className={`absolute bottom-9 ${
+                isMine ? 'right-0' : 'left-0'
+              } flex items-center gap-1 p-1.5 rounded-full border border-white/10 bg-zinc-950 shadow-xl z-30 animate-fade-in`}
             >
-              {message.type === 'text' && onEdit && (
-                <button
-                  onClick={handleEdit}
-                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs text-zinc-300 hover:bg-white/5 hover:text-white transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>Edit</span>
-                </button>
-              )}
-              <button
-                onClick={handleDelete}
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs text-accent-pink hover:bg-accent-pink/10 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
-              </button>
+              {REACTION_PALETTE.map((emoji) => {
+                const mine = reactions
+                  .find((r) => r.emoji === emoji)
+                  ?.users.includes(currentUserId ?? '');
+                return (
+                  <button
+                    key={emoji}
+                    onClick={() => handleToggleEmoji(emoji)}
+                    className={`w-7 h-7 rounded-full flex items-center justify-center text-base hover:scale-125 transition-transform cursor-pointer ${
+                      mine ? 'bg-accent-violet/20' : 'hover:bg-white/5'
+                    }`}
+                    title={`React with ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
-      )}
+
+        {/* Edit/Delete menu — only mine */}
+        {isMine && (
+          <>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
+              title="Message options"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+
+            {showMenu && (
+              <div
+                ref={menuRef}
+                className="absolute bottom-9 right-0 w-32 rounded-xl border border-white/10 bg-zinc-950 p-1 shadow-xl z-30"
+              >
+                {message.type === 'text' && onEdit && (
+                  <button
+                    onClick={handleEdit}
+                    className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs text-zinc-300 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    <span>Edit</span>
+                  </button>
+                )}
+                <button
+                  onClick={handleDelete}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-left text-xs text-accent-pink hover:bg-accent-pink/10 transition-colors cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };

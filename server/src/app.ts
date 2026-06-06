@@ -15,14 +15,22 @@ import userRoutes from './routes/user.routes';
 
 const app = express();
 
+// Build allowed CORS origins. In dev, allow everything (true). In prod,
+// CORS_ORIGIN is required and must be a comma-separated list of exact origins.
+const allowedOrigins: string[] | true = env.CORS_ORIGIN
+  ? env.CORS_ORIGIN.split(',').map((o) => o.trim()).filter(Boolean)
+  : true;
+
 // Security middlewares
 app.use(helmet());
 app.use(
   cors({
-    origin: env.NODE_ENV === 'production' ? false : true, // Configure properly when clients are deployed
+    origin: allowedOrigins,
     credentials: true,
   })
 );
+// Export for socket.io to reuse the same allowlist
+export { allowedOrigins };
 
 // Parsers
 app.use(express.json());

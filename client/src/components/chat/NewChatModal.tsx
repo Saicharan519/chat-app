@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Search, Check, UserPlus } from 'lucide-react';
 import { useSearchUsers } from '@/features/users/api';
 import type { User } from '@/features/users/api';
@@ -67,9 +68,15 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="glass-panel w-full max-w-md rounded-2xl p-6 flex flex-col max-h-[90vh] shadow-2xl relative animate-slide-up">
+  return createPortal(
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+      onClick={handleClose}
+    >
+      <div
+        className="w-full max-w-md rounded-2xl p-6 flex flex-col max-h-[90vh] shadow-2xl relative animate-slide-up bg-zinc-950 border border-white/10"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-4 shrink-0">
           <h2 className="font-display text-lg font-bold text-white flex items-center gap-2">
@@ -189,6 +196,7 @@ export const NewChatModal: React.FC<NewChatModalProps> = ({ isOpen, onClose }) =
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
