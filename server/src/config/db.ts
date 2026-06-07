@@ -2,11 +2,19 @@ import { Pool } from 'pg';
 import { env } from './env';
 import { logger } from '../utils/logger';
 
+// Managed Postgres providers (Supabase, Neon, Render, etc.) require SSL.
+// `pg` doesn't auto-enable SSL from a `?sslmode=require` query parameter, so we
+// force it on whenever NODE_ENV=production. `rejectUnauthorized: false` is
+// needed because providers like Supabase use intermediate certs that aren't
+// in Node's default trust store — the connection is still encrypted.
+const useSSL = env.NODE_ENV === 'production';
+
 const pool = new Pool({
   connectionString: env.DATABASE_URL,
   max: 20, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error if connection takes more than 2 seconds
+  connectionTimeoutMillis: 10000, // 10s — free-tier cold starts can be slow
+  ssl: useSSL ? { rejectUnauthorized: false } : false,
 });
 
 // Log pool errors

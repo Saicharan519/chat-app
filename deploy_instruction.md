@@ -185,7 +185,7 @@ Fill in exactly as below:
 | **Branch** | `main` |
 | **Root Directory** | `server` |
 | **Runtime** | `Node` |
-| **Build Command** | `npm install && npm run build` |
+| **Build Command** | `npm install --include=dev && npm run build` *(the `--include=dev` is important — see note below)* |
 | **Start Command** | `npm start` |
 | **Instance Type** | `Free` |
 
@@ -210,6 +210,8 @@ Scroll to **Environment Variables** → click **Add Environment Variable** for e
 > ⚠️ Without `CORS_ORIGIN` set, the backend **will refuse to start in production**. We'll set it as soon as we know the frontend URL in Part 9. For now Render will deploy, the service will try to boot, fail validation, and restart in a loop. That's expected — don't panic.
 >
 > **Workaround:** put a placeholder like `CORS_ORIGIN=http://localhost:5173` for now so Render boots clean during the initial deploy. We'll update it for real after Vercel gives us the frontend URL.
+
+> ⚠️ **About `--include=dev` in the build command:** Render sets `NODE_ENV=production` at install time (because of the env var above), which causes `npm install` to skip `devDependencies`. Our build needs TypeScript and `@types/*` (both devDeps) to compile, so we explicitly include them. The repo also ships a `server/.npmrc` with `production=false` as a safety net.
 
 ### 7.4 Deploy
 1. Click **Create Web Service** at the bottom
